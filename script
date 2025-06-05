@@ -1,0 +1,44 @@
+#!/bin/bash
+set -x
+
+SOURCE_DIR="/home/ryan/Documents"        
+BACKUP_DIR="/home/ryan/backup"
+TEMP_DIR="$BACKUP_DIR/temp"
+LOG_FILE="$BACKUP_DIR/backup.log"  
+ERROR_LOG="$BACKUP_DIR/error.log"  
+
+mkdir -p "$BACKUP_DIR"
+mkdir -p "$TEMP_DIR"
+
+echo "[$(date)] Starting backup process" >> "$LOG_FILE"
+
+if [ ! -d "$SOURCE_DIR" ]; then
+    echo "[$(date)] ERROR: Source directory not found: $SOURCE_DIR" >> "$ERROR_LOG"  
+    exit 1
+fi
+
+now=$(date +"%d_%m_%y")
+
+echo "[$(date)] Copying files to temporary directory" >> "$LOG_FILE"
+cp -R "$SOURCE_DIR"/* "$TEMP_DIR" 2>> "$ERROR_LOG"
+
+if [ $? -ne 0 ]; then
+    echo "[$(date)] ERROR: Failed to copy files" >> "$ERROR_LOG"
+    exit 1
+fi
+
+ZIP_FILE="$BACKUP_DIR/${now}.zip"
+echo "[$(date)] Creating zip archive" >> "$LOG_FILE"
+zip -r "$ZIP_FILE" "$TEMP_DIR"/* 2>> "$ERROR_LOG"
+
+if [ $? -eq 0 ]; then
+    echo "[$(date)] SUCCESS: Backup created at $ZIP_FILE" >> "$LOG_FILE"  
+else
+    echo "[$(date)] ERROR: Zip command failed" >> "$ERROR_LOG"  
+    exit 1
+fi
+
+rm -rf "$TEMP_DIR"/*
+
+echo "[$(date)] Backup process completed" >> "$LOG_FILE"
+set +x
