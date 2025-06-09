@@ -1,44 +1,68 @@
 #!/bin/bash
 set -x
 
-SOURCE_DIR="/home/ryan/Documents"        
-BACKUP_DIR="/home/ryan/backup"
+# Configuration parameters
+SOURCE_DIR="$HOME/Documents"
+BACKUP_DIR="$HOME/backup"
 TEMP_DIR="$BACKUP_DIR/temp"
-LOG_FILE="$BACKUP_DIR/backup.log"  
-ERROR_LOG="$BACKUP_DIR/error.log"  
+LOG_FILE="$BACKUP_DIR/backup.log"
+ERROR_LOG="$BACKUP_DIR/error.log"
 
-mkdir -p "$BACKUP_DIR"
-mkdir -p "$TEMP_DIR"
+# Function to create directory
+create_dir() {
+    if [ ! -d "$1" ]; then
+        if ! mkdir -p "$1"; then
+            echo "Error: Failed to create directory $1" >&2
+            return 1
+        fi
+    fi
+    
+    if [ ! -w "$1" ]; then
+        echo "Error: No write permission for directory $1" >&2
+        echo "Please run: sudo chown $(whoami): $1 && sudo chmod 755 $1" >&2
+        return 1
+    fi
+    
+    return 0
+}
+
+# Create necessary directories
+for dir in "$BACKUP_DIR" "$TEMP_DIR"; do
+    if ! create_dir "$dir"; then
+        exit 1
+    fi
+done
+
+# Initialize log files
+touch "$LOG_FILE" "$ERROR_LOG" || exit 1
 
 echo "[$(date)] Starting backup process" >> "$LOG_FILE"
 
+# Check source directory
 if [ ! -d "$SOURCE_DIR" ]; then
-    echo "[$(date)] ERROR: Source directory not found: $SOURCE_DIR" >> "$ERROR_LOG"  
+    echo "[$(date)] Error: Source directory does not exist $SOURCE_DIR" >> "$ERROR_LOG"
+    echo "Please create the source directory first: mkdir -p $SOURCE_DIR" >> "$ERROR_LOG"
     exit 1
 fi
 
-now=$(date +"%d_%m_%y")
-
-echo "[$(date)] Copying files to temporary directory" >> "$LOG_FILE"
-cp -R "$SOURCE_DIR"/* "$TEMP_DIR" 2>> "$ERROR_LOG"
-
-if [ $? -ne 0 ]; then
-    echo "[$(date)] ERROR: Failed to copy files" >> "$ERROR_LOG"
+# Perform backup (using rsync for reliability)
+echo "[$(date)] Syncing files to temporary directory" >> "$LOG_FILE"
+if ! rsync -a "$SOURCE_DIR/" "$TEMP_DIR/"; then
+    echo "[$(date)] Error: File synchronization failed" >> "$ERROR_LOG"
     exit 1
 fi
 
-ZIP_FILE="$BACKUP_DIR/${now}.zip"
-echo "[$(date)] Creating zip archive" >> "$LOG_FILE"
-zip -r "$ZIP_FILE" "$TEMP_DIR"/* 2>> "$ERROR_LOG"
-
-if [ $? -eq 0 ]; then
-    echo "[$(date)] SUCCESS: Backup created at $ZIP_FILE" >> "$LOG_FILE"  
-else
-    echo "[$(date)] ERROR: Zip command failed" >> "$ERROR_LOG"  
+# Create compressed archive (with timestamp naming)
+backup_file="$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+echo "[$(date)] Creating compressed archive" >> "$LOG_FILE"
+if ! tar -czf "$backup_file" -C "$TEMP_DIR" .; then
+    echo "[$(date)] Error: Compression failed" >> "$ERROR_LOG"
     exit 1
 fi
 
+# Clean up temporary files
 rm -rf "$TEMP_DIR"/*
 
-echo "[$(date)] Backup process completed" >> "$LOG_FILE"
+echo "[$(date)] Backup completed successfully: $backup_file" >> "$LOG_FILE"
+echo "Backup completed. File saved at: $backup_file"
 set +x
